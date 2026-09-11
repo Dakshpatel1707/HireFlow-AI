@@ -2,7 +2,7 @@
 
 HireFlow AI is a full-stack AI-powered Job Portal and Applicant Tracking System (ATS) built using the MERN stack.
 
-It provides separate workflows for candidates and recruiters, along with AI-based resume analysis, candidate ranking, job matching, and application management.
+The platform provides separate workflows for candidates and recruiters. Candidates can discover and apply for jobs, upload resumes, track applications, and receive AI-based job recommendations. Recruiters can create and manage jobs, review applications, analyze resumes, rank candidates, and shortlist or reject applicants.
 
 ---
 
@@ -62,12 +62,13 @@ It provides separate workflows for candidates and recruiters, along with AI-base
 - Bootstrap
 - HTML5
 - CSS3
+- Vite
 
 ### Backend
 
 - Node.js
 - Express.js
-- REST API
+- REST APIs
 - JWT Authentication
 - Multer
 - Express Middleware
@@ -99,21 +100,62 @@ HireFlow-AI/
 ├── client/
 │   ├── src/
 │   │   ├── components/
+│   │   │   ├── candidate/
+│   │   │   └── common/
+│   │   │
 │   │   ├── context/
+│   │   │   └── AuthContext.jsx
+│   │   │
 │   │   ├── pages/
-│   │   └── services/
+│   │   │   ├── auth/
+│   │   │   ├── candidate/
+│   │   │   ├── common/
+│   │   │   └── recruiter/
+│   │   │
+│   │   ├── services/
+│   │   │   └── api.js
+│   │   │
+│   │   ├── App.jsx
+│   │   ├── App.css
+│   │   └── main.jsx
+│   │
 │   ├── package.json
 │   └── vite.config.js
 │
 ├── server/
 │   ├── config/
+│   │   └── db.js
+│   │
 │   ├── controllers/
+│   │   ├── applicationController.js
+│   │   ├── authController.js
+│   │   └── jobController.js
+│   │
 │   ├── middleware/
+│   │   ├── authMiddleware.js
+│   │   ├── errorMiddleware.js
+│   │   ├── rateLimiter.js
+│   │   ├── roleMiddleware.js
+│   │   ├── uploadMiddleware.js
+│   │   └── validationMiddleware.js
+│   │
 │   ├── models/
+│   │   ├── Application.js
+│   │   ├── Job.js
+│   │   └── User.js
+│   │
 │   ├── routes/
+│   │   ├── applicationRoutes.js
+│   │   ├── authRoutes.js
+│   │   └── jobRoutes.js
+│   │
 │   ├── utils/
+│   │   ├── atsAnalyzer.js
+│   │   └── jobMatcher.js
+│   │
 │   ├── app.js
 │   ├── server.js
 │   └── package.json
 │
-└── .gitignore
+├── .gitignore
+└── README.md
