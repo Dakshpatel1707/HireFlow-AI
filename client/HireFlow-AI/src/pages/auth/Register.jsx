@@ -1,220 +1,68 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import AuthContext from "../../context/AuthContext";
 import api from "../../services/api";
 
-const Register = () => {
-    const navigate = useNavigate();
+function Login() {
+  const { loginUser } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-    const [formData, setFormData] = useState({
-        name: "",
-        email: "",
-        password: "",
-        role: "candidate",
-    });
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true); setError("");
+      const response = await api.post("/auth/login", { email, password });
+      loginUser(response.data.user, response.data.token);
+      if (response.data.user.role === "candidate") navigate("/candidate/dashboard");
+      else if (response.data.user.role === "recruiter") navigate("/recruiter/dashboard");
+    } catch (error) {
+      setError(error.response?.data?.message || "Login failed. Please check your credentials.");
+    } finally { setLoading(false); }
+  };
 
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-    const [message, setMessage] = useState("");
-
-    const handleChange = (e) => {
-        setFormData({
-            ...formData,
-            [e.target.name]: e.target.value,
-        });
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-
-        try {
-            setLoading(true);
-            setError("");
-            setMessage("");
-
-            const response = await api.post("/auth/register", formData);
-
-            console.log("Register Response:", response.data);
-
-            setMessage("Registration successful! Redirecting to login...");
-
-            setTimeout(() => {
-                navigate("/login");
-            }, 1500);
-
-        } catch (error) {
-            console.error("Registration Error:", error);
-
-            setError(
-                error.response?.data?.message ||
-                "Registration failed. Please try again."
-            );
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="container py-5">
-
-            <div className="row justify-content-center">
-
-                <div className="col-md-6 col-lg-5">
-
-                    <div className="card shadow border-0">
-
-                        <div className="card-body p-4 p-md-5">
-
-                            {/* Heading */}
-                            <div className="text-center mb-4">
-
-                                <h2 className="fw-bold">
-                                    Create Account
-                                </h2>
-
-                                <p className="text-muted">
-                                    Join HireFlow AI today
-                                </p>
-
-                            </div>
-
-                            {/* Error */}
-                            {error && (
-                                <div className="alert alert-danger">
-                                    {error}
-                                </div>
-                            )}
-
-                            {/* Success */}
-                            {message && (
-                                <div className="alert alert-success">
-                                    {message}
-                                </div>
-                            )}
-
-                            <form onSubmit={handleSubmit}>
-
-                                {/* Name */}
-                                <div className="mb-3">
-
-                                    <label className="form-label fw-semibold">
-                                        Full Name
-                                    </label>
-
-                                    <input
-                                        type="text"
-                                        name="name"
-                                        className="form-control"
-                                        placeholder="Enter your full name"
-                                        value={formData.name}
-                                        onChange={handleChange}
-                                        required
-                                    />
-
-                                </div>
-
-                                {/* Email */}
-                                <div className="mb-3">
-
-                                    <label className="form-label fw-semibold">
-                                        Email Address
-                                    </label>
-
-                                    <input
-                                        type="email"
-                                        name="email"
-                                        className="form-control"
-                                        placeholder="Enter your email"
-                                        value={formData.email}
-                                        onChange={handleChange}
-                                        required
-                                    />
-
-                                </div>
-
-                                {/* Password */}
-                                <div className="mb-3">
-
-                                    <label className="form-label fw-semibold">
-                                        Password
-                                    </label>
-
-                                    <input
-                                        type="password"
-                                        name="password"
-                                        className="form-control"
-                                        placeholder="Enter your password"
-                                        value={formData.password}
-                                        onChange={handleChange}
-                                        required
-                                    />
-
-                                </div>
-
-                                {/* Role */}
-                                <div className="mb-4">
-
-                                    <label className="form-label fw-semibold">
-                                        Register As
-                                    </label>
-
-                                    <select
-                                        name="role"
-                                        className="form-select"
-                                        value={formData.role}
-                                        onChange={handleChange}
-                                    >
-                                        <option value="candidate">
-                                            Candidate
-                                        </option>
-
-                                        <option value="recruiter">
-                                            Recruiter
-                                        </option>
-
-                                    </select>
-
-                                </div>
-
-                                {/* Submit */}
-                                <button
-                                    type="submit"
-                                    className="btn btn-primary w-100"
-                                    disabled={loading}
-                                >
-                                    {loading
-                                        ? "Creating Account..."
-                                        : "Create Account"}
-                                </button>
-
-                            </form>
-
-                            {/* Login Link */}
-                            <div className="text-center mt-4">
-
-                                <p className="text-muted mb-0">
-                                    Already have an account?{" "}
-
-                                    <Link
-                                        to="/login"
-                                        className="text-decoration-none fw-semibold"
-                                    >
-                                        Login
-                                    </Link>
-
-                                </p>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
+  return (
+    <div style={{ minHeight: "100vh", background: "#0f172a", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        {/* Logo */}
+        <div className="text-center mb-4">
+          <div style={{ width: 52, height: 52, background: "#2563eb", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 24, color: "#fff", margin: "0 auto 12px" }}>H</div>
+          <h5 style={{ color: "#f1f5f9", fontWeight: 800, margin: 0 }}>HireFlow <span style={{ color: "#60a5fa" }}>AI</span></h5>
+          <p style={{ color: "#64748b", fontSize: "0.85rem", margin: 0 }}>AI-Powered Recruitment Platform</p>
         </div>
-    );
-};
 
-export default Register;
+        <div className="card">
+          <div className="card-body" style={{ padding: "2rem !important" }}>
+            <h4 className="fw-bold mb-1" style={{ color: "#f1f5f9" }}>Welcome back</h4>
+            <p className="mb-4" style={{ color: "#64748b", fontSize: "0.875rem" }}>Sign in to your account</p>
+
+            {error && <div className="alert alert-danger py-2">{error}</div>}
+
+            <form onSubmit={handleSubmit}>
+              <div className="mb-3">
+                <label className="form-label">Email Address</label>
+                <input type="email" className="form-control" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+              </div>
+              <div className="mb-4">
+                <label className="form-label">Password</label>
+                <input type="password" className="form-control" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+              </div>
+              <button type="submit" className="btn btn-primary w-100" style={{ padding: "11px", borderRadius: 8, fontWeight: 700 }} disabled={loading}>
+                {loading ? <><span className="spinner-border spinner-border-sm me-2"></span>Signing in...</> : "Sign In"}
+              </button>
+            </form>
+
+            <p className="text-center mt-4 mb-0" style={{ color: "#64748b", fontSize: "0.875rem" }}>
+              Don't have an account? <Link to="/register" style={{ color: "#2563eb", fontWeight: 600, textDecoration: "none" }}>Create account</Link>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default Login;
