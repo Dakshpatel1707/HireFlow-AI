@@ -518,8 +518,14 @@ const downloadResume = asyncHandler(async (req, res) => {
         });
     }
 
-const filepath = await Application.findById(req.params.id);
-res.redirect(filepath.resumeUrl);
+    const filePath = path.join(
+        __dirname,
+        "..",
+        "uploads",
+        application.resume
+    );
+
+    res.download(filePath);
 
 
 });
