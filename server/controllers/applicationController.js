@@ -1,533 +1,343 @@
+const path = require("path");
+const fs = require("fs");
 const Application = require("../models/Application");
 const Job = require("../models/Job");
-const {
-    extractResumeText,
-    calculateATSScore,
-    analyzeResumeWithAI,
-} = require("../utils/atsAnalyzer");
-const {
-    matchResumeWithJob,
-} = require("../utils/jobMatcher");
+const { extractResumeText, calculateATSScore, analyzeResumeWithAI } = require("../utils/atsAnalyzer");
+const { matchResumeWithJob } = require("../utils/jobMatcher");
 const asyncHandler = require("express-async-handler");
-const applyJob = (async (req, res) => {
 
-
+// ── Apply to Job ──
+const applyJob = asyncHandler(async (req, res) => {
     const { jobId } = req.body;
 
-    // Check job exists
+    if (!jobId) {
+        return res.status(400).json({ success: false, message: "Job ID is required" });
+    }
+
     const job = await Job.findById(jobId);
-
     if (!job) {
-        return res.status(404).json({
-            success: false,
-            message: "Job Not Found",
-        });
+        return res.status(404).json({ success: false, message: "Job not found" });
     }
 
-    // Check already applied
-    const alreadyApplied = await Application.findOne({
-        job: jobId,
-        candidate: req.user._id,
-    });
+    if (job.status === "closed") {
+        return res.status(400).json({ success: false, message: "This job is no longer accepting applications" });
+    }
 
+    const alreadyApplied = await Application.findOne({ job: jobId, candidate: req.user._id });
     if (alreadyApplied) {
-        return res.status(400).json({
-            success: false,
-            message: "You have already applied for this job",
-        });
+        return res.status(400).json({ success: false, message: "You have already applied for this job" });
     }
 
-    // Create application
-    const application = await Application.create({
-        job: jobId,
-        candidate: req.user._id,
-    });
+    const application = await Application.create({ job: jobId, candidate: req.user._id });
 
-    res.status(201).json({
-        success: true,
-        message: "Application Submitted Successfully",
-        application,
-    });
-
-
+    res.status(201).json({ success: true, message: "Application submitted successfully", application });
 });
 
+// ── Get My Applications (Candidate) ──
 const getMyApplications = asyncHandler(async (req, res) => {
-
-
-    const applications = await Application.find({
-        candidate: req.user._id,
-    })
+    const applications = await Application.find({ candidate: req.user._id })
         .populate("job")
         .sort({ createdAt: -1 });
 
-    res.status(200).json({
-        success: true,
-        count: applications.length,
-        applications,
-    });
-
-
+    res.status(200).json({ success: true, count: applications.length, applications });
 });
 
+// ── Get Job Applications (Recruiter) ──
 const getJobApplications = asyncHandler(async (req, res) => {
-
-
     const job = await Job.findById(req.params.jobId);
-
     if (!job) {
-        return res.status(404).json({
-            success: false,
-            message: "Job Not Found",
-        });
+        return res.status(404).json({ success: false, message: "Job not found" });
     }
 
     if (job.recruiter.toString() !== req.user._id.toString()) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
+        return res.status(403).json({ success: false, message: "Access denied. You do not own this job." });
     }
 
-    const applications = await Application.find({
-        job: req.params.jobId,
-    })
+    const applications = await Application.find({ job: req.params.jobId })
         .populate("candidate", "name email")
         .sort({ createdAt: -1 });
 
-    res.status(200).json({
-        success: true,
-        count: applications.length,
-        applications,
-    });
-
-
+    res.status(200).json({ success: true, count: applications.length, applications });
 });
-const getSingleApplication = asyncHandler(async (req, res) => {
 
+// ── Get Single Application (Recruiter) ──
+const getSingleApplication = asyncHandler(async (req, res) => {
     const application = await Application.findById(req.params.id)
         .populate("candidate", "name email")
         .populate("job");
 
     if (!application) {
-        return res.status(404).json({
-            success: false,
-            message: "Application Not Found",
-        });
+        return res.status(404).json({ success: false, message: "Application not found" });
     }
 
-    // Check that this recruiter owns the job
-    if (
-        application.job.recruiter.toString() !==
-        req.user._id.toString()
-    ) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
+    if (application.job.recruiter.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ success: false, message: "Access denied. You do not own this job." });
     }
 
-    res.status(200).json({
-        success: true,
-        application,
-    });
+    res.status(200).json({ success: true, application });
 });
 
-
+// ── Update Application Status (Recruiter) ──
 const updateApplicationStatus = asyncHandler(async (req, res) => {
-
     const { status } = req.body;
 
+    const validStatuses = ["Pending", "Shortlisted", "Accepted", "Rejected"];
+    if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({
+            success: false,
+            message: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+        });
+    }
+
     const application = await Application.findById(req.params.id).populate("job");
-
     if (!application) {
-        return res.status(404).json({
-            success: false,
-            message: "Application Not Found",
-        });
+        return res.status(404).json({ success: false, message: "Application not found" });
     }
 
-    // Check ownership
     if (application.job.recruiter.toString() !== req.user._id.toString()) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
+        return res.status(403).json({ success: false, message: "Access denied. You do not own this job." });
     }
-
-    // Validate status
-   if (!["Pending", "Shortlisted", "Accepted", "Rejected"].includes(status)) {
-    return res.status(400).json({
-        success: false,
-        message: "Invalid status",
-    });
-}
 
     application.status = status;
-
     await application.save();
 
-    res.status(200).json({
-        success: true,
-        message: "Application Status Updated",
-        application,
-    });
-
-
+    res.status(200).json({ success: true, message: "Application status updated", application });
 });
 
+// ── Upload Resume (Candidate) ──
 const uploadResume = asyncHandler(async (req, res) => {
-
-    const application = await Application.findById(req.params.id);
-
-    if (!application) {
-        return res.status(404).json({
-            success: false,
-            message: "Application Not Found",
-        });
+    if (!req.file) {
+        return res.status(400).json({ success: false, message: "Please upload a PDF resume" });
     }
 
-    // Only owner can upload resume
+    const application = await Application.findById(req.params.id);
+    if (!application) {
+        return res.status(404).json({ success: false, message: "Application not found" });
+    }
+
     if (application.candidate.toString() !== req.user._id.toString()) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
+        return res.status(403).json({ success: false, message: "Access denied. This is not your application." });
+    }
+
+    // Delete old resume file if exists
+    if (application.resume) {
+        const oldPath = path.join(__dirname, "..", "uploads", application.resume);
+        if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath);
+        }
     }
 
     application.resume = req.file.filename;
-
     await application.save();
 
-    res.status(200).json({
-        success: true,
-        message: "Resume Uploaded Successfully",
-        application,
-    });
-
-
+    res.status(200).json({ success: true, message: "Resume uploaded successfully", application });
 });
 
+// ── Get ATS Report (Candidate) ──
 const getATSReport = asyncHandler(async (req, res) => {
-
-
-    const application = await Application.findById(req.params.id)
-        .populate("job");
+    const application = await Application.findById(req.params.id).populate("job");
 
     if (!application) {
-        return res.status(404).json({
-            success: false,
-            message: "Application Not Found",
-        });
+        return res.status(404).json({ success: false, message: "Application not found" });
     }
 
     if (application.candidate.toString() !== req.user._id.toString()) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
+        return res.status(403).json({ success: false, message: "Access denied. This is not your application." });
     }
 
-    const resumePath = `uploads/${application.resume}`;
+    if (!application.resume) {
+        return res.status(400).json({ success: false, message: "Please upload your resume first before generating ATS report." });
+    }
+
+    if (!application.job || !application.job.skills) {
+        return res.status(400).json({ success: false, message: "Job skills not found. Cannot generate ATS report." });
+    }
+
+    // FIX: check file exists before reading
+    const resumePath = path.join(__dirname, "..", "uploads", application.resume);
+    if (!fs.existsSync(resumePath)) {
+        return res.status(404).json({ success: false, message: "Resume file not found on server. Please re-upload your resume." });
+    }
 
     const resumeText = await extractResumeText(resumePath);
+    const result = calculateATSScore(resumeText, application.job.skills);
 
-    const result = calculateATSScore(
-        resumeText,
-        application.job.skills
-    );
-
-    res.status(200).json({
-        success: true,
-        score: result.score,
-        matchedSkills: result.matchedSkills,
-        missingSkills: result.missingSkills,
-    });
-
-
+    res.status(200).json({ success: true, score: result.score, matchedSkills: result.matchedSkills, missingSkills: result.missingSkills });
 });
 
+// ── Get Recruiter ATS Report ──
 const getRecruiterATSReport = asyncHandler(async (req, res) => {
-
-    const application = await Application.findById(req.params.id)
-        .populate("job");
+    const application = await Application.findById(req.params.id).populate("job");
 
     if (!application) {
-        return res.status(404).json({
-            success: false,
-            message: "Application Not Found",
-        });
+        return res.status(404).json({ success: false, message: "Application not found" });
     }
 
-    // Check recruiter owns this job
-    if (
-        application.job.recruiter.toString() !==
-        req.user._id.toString()
-    ) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
+    if (application.job.recruiter.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ success: false, message: "Access denied. You do not own this job." });
     }
 
-    // Check resume exists
     if (!application.resume) {
-        return res.status(400).json({
-            success: false,
-            message: "Candidate has not uploaded a resume.",
-        });
+        return res.status(400).json({ success: false, message: "Candidate has not uploaded a resume yet." });
     }
 
-    const resumePath = `uploads/${application.resume}`;
+    // FIX: check file exists
+    const resumePath = path.join(__dirname, "..", "uploads", application.resume);
+    if (!fs.existsSync(resumePath)) {
+        return res.status(404).json({ success: false, message: "Resume file not found on server. Candidate may need to re-upload." });
+    }
 
-    const resumeText =
-        await extractResumeText(resumePath);
+    const resumeText = await extractResumeText(resumePath);
+    const result = calculateATSScore(resumeText, application.job.skills);
 
-    const result = calculateATSScore(
-        resumeText,
-        application.job.skills
-    );
-
-    res.status(200).json({
-        success: true,
-        score: result.score,
-        matchedSkills: result.matchedSkills,
-        missingSkills: result.missingSkills,
-    });
+    res.status(200).json({ success: true, score: result.score, matchedSkills: result.matchedSkills, missingSkills: result.missingSkills });
 });
 
+// ── AI Resume Analysis (Recruiter) ──
 const getAIResumeAnalysis = asyncHandler(async (req, res) => {
+    const application = await Application.findById(req.params.id).populate("job");
 
-    const application = await Application.findById(req.params.id)
-        .populate("job");
-
-    // Check application
     if (!application) {
-        return res.status(404).json({
-            success: false,
-            message: "Application Not Found",
-        });
+        return res.status(404).json({ success: false, message: "Application not found" });
     }
 
-    // Check recruiter ownership
-    if (
-        application.job.recruiter.toString() !==
-        req.user._id.toString()
-    ) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
+    if (application.job.recruiter.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ success: false, message: "Access denied. You do not own this job." });
     }
 
-    // Check resume
     if (!application.resume) {
-        return res.status(400).json({
-            success: false,
-            message: "Candidate has not uploaded a resume.",
-        });
+        return res.status(400).json({ success: false, message: "Candidate has not uploaded a resume yet." });
     }
 
-    // Resume path
-    const resumePath = `uploads/${application.resume}`;
+    // FIX: check file exists before AI analysis
+    const resumePath = path.join(__dirname, "..", "uploads", application.resume);
+    if (!fs.existsSync(resumePath)) {
+        return res.status(404).json({ success: false, message: "Resume file not found on server. Candidate may need to re-upload." });
+    }
 
-    // Extract resume text
-    const resumeText =
-        await extractResumeText(resumePath);
+    const resumeText = await extractResumeText(resumePath);
+    const aiResult = await analyzeResumeWithAI(resumeText, application.job);
 
-    // Generate AI analysis
-    const aiResult =
-        await analyzeResumeWithAI(
-            resumeText,
-            application.job
-        );
-
-    // Save AI analysis in MongoDB
     application.aiAnalysis = aiResult;
-
     await application.save();
 
-    // Send response
-    res.status(200).json({
-        success: true,
-        applicationId: application._id,
-        analysis: aiResult,
-    });
+    res.status(200).json({ success: true, applicationId: application._id, analysis: aiResult });
 });
 
-
+// ── AI Ranked Candidates (Recruiter) ──
 const getAIRankedCandidates = asyncHandler(async (req, res) => {
-
     const { jobId } = req.params;
 
-    // Find all applications for this job
-    const applications = await Application.find({
-        job: jobId,
-    })
+    const job = await Job.findById(jobId);
+    if (!job) {
+        return res.status(404).json({ success: false, message: "Job not found" });
+    }
+
+    if (job.recruiter.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ success: false, message: "Access denied. You do not own this job." });
+    }
+
+    const applications = await Application.find({ job: jobId })
         .populate("candidate", "name email")
         .populate("job");
 
-    // Check whether job exists
     if (applications.length === 0) {
-        return res.status(404).json({
-            success: false,
-            message: "No applications found for this job.",
-        });
+        return res.status(404).json({ success: false, message: "No applications found for this job yet." });
     }
 
-    // Check recruiter ownership
-    const job = applications[0].job;
-
-    if (
-        job.recruiter.toString() !==
-        req.user._id.toString()
-    ) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
-    }
-
-    // Sort candidates by AI score
+    // Sort by AI score — only those who have been analyzed
     const rankedCandidates = applications
-        .filter(
-            (application) =>
-                application.aiAnalysis &&
-                application.aiAnalysis.score !== null
-        )
-        .sort(
-            (a, b) =>
-                b.aiAnalysis.score -
-                a.aiAnalysis.score
-        );
+        .filter((app) => app.aiAnalysis && app.aiAnalysis.score !== null)
+        .sort((a, b) => b.aiAnalysis.score - a.aiAnalysis.score);
 
-    res.status(200).json({
-        success: true,
-        count: rankedCandidates.length,
-        candidates: rankedCandidates,
-    });
+    if (rankedCandidates.length === 0) {
+        return res.status(400).json({
+            success: false,
+            message: "No candidates have been AI-analyzed yet. Open individual applications and click Generate AI Analysis first.",
+        });
+    }
+
+    res.status(200).json({ success: true, count: rankedCandidates.length, candidates: rankedCandidates });
 });
 
+// ── AI Job Matches (Candidate) ──
 const getAIJobMatches = asyncHandler(async (req, res) => {
-
     const candidateId = req.user._id;
 
-
-    // Find candidate's applications
-    const applications = await Application.find({
-        candidate: candidateId,
-    });
+    const applications = await Application.find({ candidate: candidateId });
 
     if (applications.length === 0) {
-        return res.status(404).json({
+        return res.status(400).json({
             success: false,
-            message: "No applications found for this candidate.",
+            message: "You have not applied to any jobs yet. Apply to at least one job and upload your resume first.",
         });
     }
 
-
-    // Find an application that has a resume
-    const applicationWithResume = applications.find(
-        (application) => application.resume
-    );
-
+    const applicationWithResume = applications.find((app) => app.resume);
     if (!applicationWithResume) {
         return res.status(400).json({
             success: false,
-            message: "Please upload a resume first.",
+            message: "Please upload your resume in one of your applications first.",
         });
     }
 
-
-    // Resume file path
-    const resumePath =
-        `uploads/${applicationWithResume.resume}`;
-
-
-    // Extract resume text
-    const resumeText =
-        await extractResumeText(resumePath);
-
-
-    // Get all available jobs
-    const jobs = await Job.find();
-
-
-    if (jobs.length === 0) {
+    // FIX: check file exists
+    const resumePath = path.join(__dirname, "..", "uploads", applicationWithResume.resume);
+    if (!fs.existsSync(resumePath)) {
         return res.status(404).json({
             success: false,
-            message: "No jobs available.",
+            message: "Resume file not found on server. Please re-upload your resume.",
         });
     }
 
+    const resumeText = await extractResumeText(resumePath);
 
-    // Match resume with every job
+    const jobs = await Job.find({ status: { $ne: "closed" } });
+    if (jobs.length === 0) {
+        return res.status(404).json({ success: false, message: "No active jobs available to match." });
+    }
+
     const matchedJobs = [];
-
     for (const job of jobs) {
-
-        const matchResult =
-            await matchResumeWithJob(
-                resumeText,
-                job
-            );
-
-        matchedJobs.push({
-            job: job,
-            match: matchResult,
-        });
+        try {
+            const matchResult = await matchResumeWithJob(resumeText, job);
+            matchedJobs.push({ job, match: matchResult });
+        } catch (err) {
+            console.error(`Match failed for job ${job._id}:`, err.message);
+        }
     }
 
+    matchedJobs.sort((a, b) => b.match.matchScore - a.match.matchScore);
 
-    // Sort highest score first
-    matchedJobs.sort(
-        (a, b) =>
-            b.match.matchScore -
-            a.match.matchScore
-    );
-
-
-    res.status(200).json({
-        success: true,
-        count: matchedJobs.length,
-        jobs: matchedJobs,
-    });
+    res.status(200).json({ success: true, count: matchedJobs.length, jobs: matchedJobs });
 });
 
-
-const path = require("path");
-
+// ── Download Resume (Recruiter) ──
 const downloadResume = asyncHandler(async (req, res) => {
-
-
-    const application = await Application.findById(req.params.id)
-        .populate("job");
+    const application = await Application.findById(req.params.id).populate("job");
 
     if (!application) {
+        return res.status(404).json({ success: false, message: "Application not found" });
+    }
+
+    if (application.job.recruiter.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ success: false, message: "Access denied. You do not own this job." });
+    }
+
+    if (!application.resume) {
+        return res.status(400).json({ success: false, message: "Candidate has not uploaded a resume yet." });
+    }
+
+    // FIX: check file exists before download
+    const filePath = path.join(__dirname, "..", "uploads", application.resume);
+    if (!fs.existsSync(filePath)) {
         return res.status(404).json({
             success: false,
-            message: "Application Not Found",
+            message: "Resume file not found on server. This happens when the server restarts (Render free tier). Candidate needs to re-upload.",
         });
     }
 
-    // Only recruiter who owns the job can download
-    if (application.job.recruiter.toString() !== req.user._id.toString()) {
-        return res.status(403).json({
-            success: false,
-            message: "Access Denied",
-        });
-    }
-
-    const filePath = path.join(
-        __dirname,
-        "..",
-        "uploads",
-        application.resume
-    );
-
-    res.download(filePath);
-
-
+    res.download(filePath, `resume-${application.candidate}.pdf`);
 });
 
 module.exports = {
