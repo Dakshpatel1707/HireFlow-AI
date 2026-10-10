@@ -11,13 +11,16 @@ const errorHandler = require("./middleware/errorMiddleware");
 
 const app = express();
 
+// FIX: Trust Render's proxy — fixes ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+app.set("trust proxy", 1);
+
 // Middleware
 app.use(cors());
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// FIX: Serve uploads folder as static — so resume PDFs are accessible via URL
+// Serve uploads folder as static
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Rate Limiter
