@@ -11,7 +11,7 @@ const errorHandler = require("./middleware/errorMiddleware");
 
 const app = express();
 
-// FIX: Trust Render's proxy — fixes ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// FIX 1: Trust Render proxy — fixes ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
 app.set("trust proxy", 1);
 
 // Middleware
@@ -20,7 +20,7 @@ app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploads folder as static
+// Serve uploads as static
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Rate Limiter
@@ -34,11 +34,6 @@ app.use("/api/applications", applicationRoutes);
 // Health check
 app.get("/", (req, res) => {
     res.json({ message: "HireFlow AI Backend Running ✅", status: "ok" });
-});
-
-// 404 handler
-app.use("*", (req, res) => {
-    res.status(404).json({ success: false, message: `Route ${req.originalUrl} not found` });
 });
 
 // Error handler (must be last)
